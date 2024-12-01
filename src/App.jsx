@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { X, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Camera, Video, Loader2 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import GIF from 'gif.js';
 
 const App = () => {
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [components, setComponents] = useState([]);
   const [loadedComponent, setLoadedComponent] = useState(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const componentRef = useRef(null);
+  const framesRef = useRef([]);
 
   useEffect(() => {
     const moduleFiles = import.meta.glob('./components/*.jsx');
@@ -28,102 +33,155 @@ const App = () => {
   }, [selectedComponent]);
 
   const getComponentDescription = (name) => {
-    // Add descriptions for your components here
     const descriptions = {
       'AnimatedTradingChart': 'Real-time visualization of trading algorithms with animated data flow',
-      // Add more descriptions as you create components
     };
     return descriptions[name] || 'Interactive component visualization';
   };
 
   const handleComponentSelect = (comp) => {
     setSelectedComponent(comp);
-    setIsDropdownOpen(false);
   };
 
-  const closeComponent = () => {
-    setSelectedComponent(null);
-    setLoadedComponent(null);
+  const saveAsPNG = async () => {
+    if (componentRef.current) {
+      try {
+        const element = componentRef.current;
+        const canvas = await html2canvas(element, {
+          useCORS: true,
+          scale: 2,
+          backgroundColor: '#1f2937'
+        });
+        
+        const link = document.createElement('a');
+        link.download = `${selectedComponent.name}-${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (error) {
+        console.error('Error saving PNG:', error);
+      }
+    }
+  };
+
+  const recordAsGIF = async () => {
+    if (componentRef.current && !isRecording) {
+      setIsRecording(true);
+      setProgress(0);
+      framesRef.current = [];
+
+      // Record frames for 5 seconds
+      const startTime = Date.now();
+      const duration = 5000; // 5 seconds
+
+      while (Date.now() - startTime < duration) {
+        const canvas = await html2canvas(componentRef.current, {
+          useCORS: true,
+          scale: 1,
+          backgroundColor: '#1f2937'
+        });
+        framesRef.current.push(canvas);
+        setProgress(((Date.now() - startTime) / duration) * 100);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      createGIF();
+    }
+  };
+
+  const createGIF = () => {
+    const gif = new GIF({
+      workers: 2,
+      quality: 10,
+      width: componentRef.current.offsetWidth,
+      height: componentRef.current.offsetHeight,
+      workerScript: '/gif.worker.js'
+    });
+
+    framesRef.current.forEach(frame => {
+      gif.addFrame(frame, { delay: 100 });
+    });
+
+    gif.on('finished', blob => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${selectedComponent.name}-${Date.now()}.gif`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      setIsRecording(false);
+      setProgress(0);
+    });
+
+    gif.render();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-blue-900 text-white p-8">
-      {/* Header */}
-      <header className="max-w-7xl mx-auto text-center mb-12">
-        <h1 className="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-          Interactive Component Gallery
-        </h1>
-        <p className="text-xl text-gray-300">
-          Explore a collection of interactive React components and visualizations
-        </p>
-      </header>
+    <div className="flex h-screen bg-gray-900">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 p-6 overflow-y-auto">
+        <h2 className="text-xl font-bold text-white mb-6">Components</h2>
+        <div className="space-y-2">
+          {components.map(comp => (
+            <button
+              key={comp.name}
+              onClick={() => handleComponentSelect(comp)}
+              className={`w-full text-left p-3 rounded-lg transition-colors ${
+                selectedComponent?.name === comp.name 
+                  ? 'bg-blue-600 text-white' 
+                  : 'text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              {comp.name}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Component Selection Dropdown */}
-      <div className="max-w-xs mx-auto mb-12 relative">
-        <button
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="w-full flex items-center justify-between px-6 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition-all duration-300 border border-gray-700"
-        >
-          <span className="text-gray-300">
-            {selectedComponent?.name || 'Select a component'}
-          </span>
-          <ChevronDown
-            className={`transform transition-transform duration-300 ${
-              isDropdownOpen ? 'rotate-180' : ''
-            }`}
-          />
-        </button>
-        
-        {/* Dropdown Menu */}
-        {isDropdownOpen && (
-          <div className="absolute w-full mt-2 py-2 bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 transform opacity-100 scale-100 transition-all duration-300">
-            {components.map(comp => (
-              <button
-                key={comp.name}
-                onClick={() => handleComponentSelect(comp)}
-                className="w-full text-left px-6 py-3 hover:bg-gray-700 transition-colors duration-200"
-              >
-                {comp.name}
-              </button>
-            ))}
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        {selectedComponent ? (
+          <div className="p-8">
+            {/* Control buttons */}
+            <div className="mb-6 flex items-center gap-4">
+              <h2 className="text-2xl font-bold text-white">{selectedComponent.name}</h2>
+              <div className="flex gap-2 ml-auto">
+                {isRecording && (
+                  <div className="px-3 py-2 rounded-lg bg-gray-700 text-white text-sm">
+                    Recording: {Math.round(progress)}%
+                  </div>
+                )}
+                <button
+                  onClick={saveAsPNG}
+                  disabled={isRecording}
+                  className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
+                  title="Save as PNG"
+                >
+                  <Camera size={20} />
+                </button>
+                <button
+                  onClick={recordAsGIF}
+                  disabled={isRecording}
+                  className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
+                  title="Record GIF"
+                >
+                  {isRecording ? <Loader2 size={20} className="animate-spin" /> : <Video size={20} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Component Display */}
+            <div className="bg-gray-800 rounded-xl shadow-xl" ref={componentRef}>
+              <div className="p-8">
+                {loadedComponent && React.createElement(loadedComponent)}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-gray-400">
+            <p className="text-xl">Select a component from the sidebar to view</p>
           </div>
         )}
       </div>
-
-      {/* Component Display */}
-      {!selectedComponent ? (
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {components.map(comp => (
-            <div
-              key={comp.name}
-              onClick={() => handleComponentSelect(comp)}
-              className="bg-gray-800 rounded-xl p-6 cursor-pointer transform transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl border border-gray-700"
-            >
-              <h3 className="text-xl font-semibold mb-3">{comp.name}</h3>
-              <p className="text-gray-400">{comp.description}</p>
-              <div className="mt-4 text-blue-400 text-sm">Click to view →</div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-8 z-50">
-          <div className="bg-gray-800 rounded-xl w-full max-w-6xl max-h-[90vh] overflow-auto relative">
-            <button
-              onClick={closeComponent}
-              className="absolute top-4 right-4 p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-            >
-              <X size={24} />
-            </button>
-            <div className="p-8">
-              {loadedComponent && (
-                <div className="animate-fadeIn">
-                  {React.createElement(loadedComponent)}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
