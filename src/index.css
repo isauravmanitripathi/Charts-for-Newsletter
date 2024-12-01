@@ -1,0 +1,12 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Add this to ensure full height */
+html, body, #root {
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: #1a1a1a;  /* Dark background */
+  color: white;
+}
